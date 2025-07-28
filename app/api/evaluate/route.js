@@ -2,11 +2,9 @@
 
 import express from 'express';
 import { loadDocumentsFromUrl } from '../../../lib/loaders/documentLoader.js';
-import { memoryStoreFromDocs } from '../../../lib/vectorstore/memoryStore.js';
-import { extractQueryData } from '../../../lib/chains/extractionChain.js';
-import { runSemanticSearch } from '../../../lib/chains/searchChain.js';
-import { evaluateDecision } from '../../../lib/chains/decisionChain.js';
-
+import { createMemoryStore, searchMemoryStore } from '../../../lib/vectorstore/memoryStore.js';
+import { runExtractionChain } from '../../../lib/chains/extractionChain.js';
+import { runDecisionChain } from '../../../lib/chains/decisionChain.js';
 
 
 const router = express.Router();
@@ -24,16 +22,17 @@ router.post('/api/query', async (req, res) => {
     const documents = await loadDocumentsFromUrl(fileUrl);
 
     // 2. Generate vector store from split documents
-    const vectorStore = await memoryStoreFromDocs(documents);
+    const vectorStore = await createMemoryStore(documents);
 
     // 3. Extract structured information from user query
-    const userData = await extractQueryData(query);
+    const userData = await runExtractionChain(query);
 
     // 4. Search similar clauses semantically based on procedure and policy duration
-    const clauses = await runSemanticSearch(vectorStore, userData);
+    const searchTerm = `${userData.procedure || ''} ${userData.policyDuration || ''}`.trim();
+    const clauses = await searchMemoryStore(vectorStore, searchTerm, 4);
 
     // 5. Evaluate and decide claim approval
-    const decision = await evaluateDecision(userData, clauses);
+    const decision = await runDecisionChain(userData, clauses);
 
     res.json(decision);
   } catch (err) {
